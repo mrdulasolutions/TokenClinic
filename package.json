@@ -11,6 +11,7 @@
     "audit": "bun run src/cli.ts audit",
     "demo": "bun run src/cli.ts scan fixtures/sample-repo",
     "demo:audit": "bun run src/cli.ts audit fixtures/sample-logs.jsonl",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

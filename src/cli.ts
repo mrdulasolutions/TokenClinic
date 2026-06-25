@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve, relative, join } from "node:path";
+import { resolve, relative } from "node:path";
 import type { Finding, EOB, AuditResult, Bucket } from "./types";
 import { detectDeps } from "./detect/deps";
 import { triage } from "./triage";
@@ -8,6 +7,7 @@ import { partition } from "./diagnose/partition";
 import { buildContext } from "./diagnose/context";
 import { DryRunFixer } from "./treat/fixer";
 import { AnthropicFixer } from "./treat/anthropic";
+import { runApplyLoop } from "./treat/apply";
 import { buildEOB } from "./bill/eob";
 import { writeHealthRecord } from "./record/health";
 import { parseLog, audit } from "./audit/audit";
@@ -40,10 +40,6 @@ async function scan(target: string) {
 }
 
 // ── scan --apply (Approach B, live): iterative fix + verify ─────────────────
-// Each pass re-triages, so line shifts from prior edits are handled correctly;
-// a fix is verified only when its finding is gone on the next triage.
-const MAX_PASSES = 25;
-
 async function scanApply(target: string) {
   if (!process.env.ANTHROPIC_API_KEY) {
     console.log(`${c.red("scan --apply needs a model")} — set ANTHROPIC_API_KEY, then re-run.`);
@@ -54,30 +50,14 @@ async function scanApply(target: string) {
   const root = resolve(target);
   const now = new Date().toISOString();
   const deps = detectDeps(root);
-  const before = partition(triage(root));
 
-  const fixer = new AnthropicFixer();
-  const attempted = new Set<string>();
-  const fixed: Finding[] = [];
+  const { before, fixed } = await runApplyLoop(root, new AnthropicFixer());
 
-  for (let pass = 0; pass < MAX_PASSES; pass++) {
-    const target_ = partition(triage(root)).find(
-      (f) => f.fixability === "needs-llm" && !attempted.has(f.id),
-    );
-    if (!target_) break;
-    attempted.add(target_.id);
-
-    target_.context = buildContext(root, target_);
-    const { resolution, newSnippet } = await fixer.fix(target_);
-    if (newSnippet !== undefined) applySnippet(root, target_, newSnippet);
-
-    resolution.patched = true;
-    resolution.verified = !partition(triage(root)).some((f) => f.id === target_.id);
-    target_.resolution = resolution;
-    fixed.push(target_);
+  for (const f of fixed) {
+    const ok = f.resolution?.verified;
     console.log(
-      `  ${resolution.verified ? c.green("✓") : c.yellow("✗")} ${c.bold(target_.rule)} ` +
-        `${c.dim(`${target_.file}:${target_.line}`)} → ${resolution.model.replace("claude-", "")} ${c.dim(usd(resolution.cost))}`,
+      `  ${ok ? c.green("✓") : c.yellow("✗")} ${c.bold(f.rule)} ` +
+        `${c.dim(`${f.file}:${f.line}`)} → ${f.resolution?.model.replace("claude-", "")} ${c.dim(usd(f.resolution?.cost ?? 0))}`,
     );
   }
 
@@ -90,15 +70,6 @@ async function scanApply(target: string) {
   console.log(`\n${c.bold("🩺 Token Clinic")} ${c.dim(`— applied ${verified}/${fixed.length} fixes verified`)}\n`);
   printEOB(eob);
   console.log(c.dim(`  health record → ${relative(process.cwd(), recordDir)}/\n`));
-}
-
-function applySnippet(root: string, f: Finding, newSnippet: string) {
-  const path = join(root, f.file);
-  const lines = readFileSync(path, "utf8").split("\n");
-  const start = (f.context?.startLine ?? f.line) - 1;
-  const oldCount = (f.context?.snippet ?? "").split("\n").length;
-  lines.splice(start, oldCount, ...newSnippet.split("\n"));
-  writeFileSync(path, lines.join("\n"));
 }
 
 // ── shared rendering ────────────────────────────────────────────────────────
