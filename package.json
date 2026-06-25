@@ -8,7 +8,9 @@
   },
   "scripts": {
     "scan": "bun run src/cli.ts scan",
+    "audit": "bun run src/cli.ts audit",
     "demo": "bun run src/cli.ts scan fixtures/sample-repo",
+    "demo:audit": "bun run src/cli.ts audit fixtures/sample-logs.jsonl",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

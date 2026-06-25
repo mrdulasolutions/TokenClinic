@@ -1,0 +1,12 @@
+{"model":"claude-opus-4-8","inputTokens":1500,"outputTokens":250,"task":"add missing import for useState","category":"import"}
+{"model":"claude-opus-4-8","inputTokens":1800,"outputTokens":300,"task":"fix type error: string not assignable to number"}
+{"model":"claude-opus-4-8","inputTokens":2200,"outputTokens":400,"task":"remove unused variable","category":"lint"}
+{"model":"claude-opus-4-8","inputTokens":1200,"outputTokens":200,"task":"fix eslint no-console warning"}
+{"model":"claude-sonnet-4-6","inputTokens":3000,"outputTokens":800,"task":"refactor auth into a hook","category":"refactor"}
+{"model":"claude-opus-4-8","inputTokens":2500,"outputTokens":600,"task":"design the caching layer","category":"architecture"}
+{"model":"claude-opus-4-8","inputTokens":2200,"outputTokens":500,"task":"why is this race condition happening"}
+{"model":"claude-opus-4-8","inputTokens":900,"outputTokens":150,"task":"fix missing semicolon"}
+{"model":"claude-sonnet-4-6","inputTokens":2500,"outputTokens":600,"task":"write docstrings for utils","category":"docs"}
+{"model":"claude-opus-4-8","inputTokens":3000,"outputTokens":800,"task":"redesign data model for multi-tenancy","category":"design"}
+{"model":"claude-opus-4-8","inputTokens":1100,"outputTokens":220,"task":"rename foo to bar across file","category":"refactor"}
+{"model":"claude-opus-4-8","inputTokens":1700,"outputTokens":280,"task":"add missing import lodash"}

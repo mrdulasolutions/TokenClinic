@@ -13,14 +13,42 @@ A pre-flight gate for coding agents. It runs cheap, deterministic analysis **on-
 | **Treat** | Route each escalated fix by difficulty: mechanical → Haiku, semantic → Sonnet, architectural → Opus. Apply, then re-run the source check — a fix isn't done until it verifies. |
 | **Bill (EOB)** | Cost per fix + savings vs. the naive "dump the file at a top model" baseline. The screenshot-able receipt. |
 
-## Try it
+## Two commands, two moves
+
+Token Clinic ships the strategically-correct **first move** (the retroactive audit) and the **recurring product** (the live scan):
 
 ```bash
 bun install
-bun run demo      # scans fixtures/sample-repo
-# or point it anywhere:
+
+# Approach A — measure the thesis from logs you already have ($0 risk, no code read)
+bun run demo:audit                                  # audits fixtures/sample-logs.jsonl
+bun run src/cli.ts audit /path/to/your-llm-calls.jsonl
+
+# Approach B — the live pre-flight scan of a repo
+bun run demo                                        # scans fixtures/sample-repo
 bun run src/cli.ts scan /path/to/a/ts/project
 ```
+
+### `audit` — the retroactive audit (Approach A)
+
+Run before building anything live. Ingests a JSONL of past LLM calls and prints the EOB **backwards** — what you spent, the *eliminable-class fraction* (the whole bet), and what the clinic loop would have saved. Runs entirely on exported logs, so there's no autofix risk and no code leaves the machine.
+
+```
+🩺 Token Clinic — retroactive audit · fixtures/sample-logs.jsonl
+   12 calls · $0.59 spent (estimated — some calls bucketed heuristically)
+
+  ● eliminable   6 calls    $0.26  44% of spend · killed on-device → $0
+  ● routable     3 calls    $0.07  12% of spend · re-priced to cheapest tier
+  ● essential    3 calls    $0.26  44% of spend · real reasoning → unchanged
+
+  eliminable-class fraction  44%  (clearly large — build it)
+  projected spend            $0.27 under the clinic loop
+  would have saved ~$0.31  (54% cheaper)
+```
+
+Log format is one JSON object per line: `{ "model", "inputTokens", "outputTokens", "task"?, "category"? }`. A `category` is authoritative; without one, the call is bucketed heuristically from `task` and the audit is flagged `estimated`.
+
+### `scan` — the live pre-flight gate (Approach B)
 
 Example output:
 
@@ -56,20 +84,30 @@ Each run writes `.tokenclinic/` into the scanned repo: `profile.json` (deps + an
 
 ## Roadmap
 
-- **v1 (here):** Triage + local autofix lane + escalation estimate + EOB + Health Record. One language (TS).
-- **v2 — amortization:** when a `needs-llm` class recurs (≥3×), spend *one* model call to synthesize a deterministic check **as data, not code** — a text pattern via [fff](https://github.com/dmtrKovalenko/fff) (fast lane) or a structural rule via [ast-grep](https://ast-grep.github.io/) — validated against generated fixtures before promotion. That class is then $0 forever. fff also upgrades Diagnose-stage retrieval.
-- **v3 — routing + distribution:** learned per-codebase routing (`routing.json`), live pricing via llm-intel, and a Claude Code skill wrapper that inserts the gate pre-edit.
+Sequenced A → B → C, per the [office-hours design](docs/) — measure before you build, sell the receipt, price the moat last.
+
+- **A — the audit (here):** `tokenclinic audit` over existing logs. Puts a real dollar number on the unverified core thesis (the eliminable-class fraction) with zero code and zero risk. Earns revenue as a paid/concierge audit. **Gate:** fraction clearly large (>40%) → build B; clearly small (<15%) → walk away.
+- **B — the live scan (here):** `tokenclinic scan` — Triage + local autofix lane + escalation estimate + verify + EOB + Health Record. One language (TS). The recurring product, distributed as a self-controlled CLI (npm + GitHub Releases) — not an integration into harnesses you don't own.
+- **C — sell the moat (later):** open-core. Triage + receipt is the free funnel; charge for the compounding **Health Record** (promoted rules + fixtures + learned routing), shared team-wide.
+
+### Inside B: the amortization engine (v2)
+
+When a `needs-llm` class recurs (≥3×), spend *one* model call to synthesize a deterministic check **as data, not code** — a text pattern via [fff](https://github.com/dmtrKovalenko/fff) (fast lane) or a structural rule via [ast-grep](https://ast-grep.github.io/) — validated against generated fixtures before promotion. That class is then $0 forever. fff also upgrades Diagnose-stage retrieval. This only holds for *eliminable* (bucket-1) findings; *routable* (bucket-2) tacit-judgment work is routed cheaper, never eliminated.
 
 ## Architecture
 
 ```
 src/
-  types.ts            # Finding / EOB — the records every stage shares
+  types.ts            # Finding / EOB / CallRecord — the records every stage shares
+  pricing/table.ts    # model prices (llm-intel seam) + token estimate
+  audit/              # Approach A: log ingest + bucket classifier + backwards EOB
   detect/deps.ts      # dependency profile
   triage/             # analyzers → normalized Finding[]
   diagnose/           # partition + context-packet assembly
   treat/              # model routing + the Fixer seam
   bill/eob.ts         # cost accounting + savings counterfactual
   record/health.ts    # the .tokenclinic/ Health Record
-  cli.ts              # `tokenclinic scan` — wires the loop together
+  cli.ts              # `tokenclinic audit` + `scan` — wires the loops together
+docs/
+  design-token-clinic.md   # the office-hours strategy (A → B → C)
 ```

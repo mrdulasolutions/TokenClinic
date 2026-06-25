@@ -43,6 +43,35 @@ export interface Resolution {
   verified: boolean; // a fix is not "done" until its source check passes again
 }
 
+// --- Audit (Approach A: the retroactive audit over existing call logs) ---
+
+// Two-bucket economics (Premise 5):
+//   eliminable - reducible to a deterministic rule; could have cost $0 on-device
+//   routable   - real work, but resolvable on a cheaper model (not eliminable)
+//   essential  - genuine reasoning; left untouched
+export type Bucket = "eliminable" | "routable" | "essential";
+
+// One past LLM call, read from a team's logs / agent traces. `category` is the
+// instrumented/concierge signal — when present it's authoritative; otherwise the
+// call is bucketed heuristically from `task` text (and the result flagged estimated).
+export interface CallRecord {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  task?: string;
+  category?: string;
+}
+
+export interface AuditResult {
+  calls: number;
+  spend: number; // real USD, from tokens × price
+  byBucket: Record<Bucket, { count: number; spend: number }>;
+  eliminableFraction: number; // share of spend in the eliminable bucket — the bet
+  projectedSpend: number; // eliminable→$0, routable→re-priced to cheapest tier, essential→unchanged
+  projectedSaved: number;
+  estimated: boolean; // true if any call was bucketed heuristically (no category)
+}
+
 // Explanation Of Benefits — the screenshot-able receipt.
 export interface EOB {
   total: number;
