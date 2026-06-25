@@ -1,0 +1,4 @@
+node_modules/
+*.log
+# health record written into scanned repos during local demos
+fixtures/**/.tokenclinic/

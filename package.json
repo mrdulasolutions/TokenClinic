@@ -1,0 +1,20 @@
+{
+  "name": "tokenclinic",
+  "version": "0.1.0",
+  "description": "Pre-flight gate for coding agents: cheap local analysis first, route only the irreducible to the right-priced model, print the bill.",
+  "type": "module",
+  "bin": {
+    "tokenclinic": "./src/cli.ts"
+  },
+  "scripts": {
+    "scan": "bun run src/cli.ts scan",
+    "demo": "bun run src/cli.ts scan fixtures/sample-repo",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "typescript": "^5.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}
