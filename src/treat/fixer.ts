@@ -4,33 +4,35 @@ import { routeModel } from "./route";
 
 // The seam where a fix is actually performed. Treat routes each escalated
 // finding through a Fixer.
-export interface Fixer {
-  fix(finding: Finding): Resolution;
+export interface FixResult {
+  resolution: Resolution;
+  newSnippet?: string; // present only when the fix can be applied to the file
 }
 
-// v1 fixer: estimates the cost of the escalation from real measured token counts
-// of the real context packet, but does NOT call a model (no key wired) and does
-// NOT mutate files. Every number it produces is honest about being an estimate;
-// the EOB is flagged `estimated: true`.
-//
-// The real implementation is a drop-in replacement: an AnthropicFixer that sends
-// the packet, applies the returned patch, then re-runs the finding's source
-// analyzer and sets verified = (the finding is gone). Until that check passes,
-// the fix is not done.
+export interface Fixer {
+  fix(finding: Finding): Promise<FixResult>;
+}
+
+// Estimating fixer: computes the cost of an escalation from real measured token
+// counts of the real context packet, but does NOT call a model or mutate files.
+// Used by `scan` (the default, read-only path). Every number it produces is
+// honest about being an estimate; the EOB is flagged `estimated`.
 const ASSUMED_OUTPUT_TOKENS = 200; // a typical small patch
 
 export class DryRunFixer implements Fixer {
-  fix(finding: Finding): Resolution {
+  async fix(finding: Finding): Promise<FixResult> {
     const model = routeModel(finding.difficulty);
     const tokensIn = (finding.context?.tokensEstimate ?? 0) + estimateTokens(finding.message);
     const tokensOut = ASSUMED_OUTPUT_TOKENS;
     return {
-      model,
-      tokensIn,
-      tokensOut,
-      cost: cost(model, tokensIn, tokensOut),
-      patched: false,
-      verified: false,
+      resolution: {
+        model,
+        tokensIn,
+        tokensOut,
+        cost: cost(model, tokensIn, tokensOut),
+        patched: false,
+        verified: false,
+      },
     };
   }
 }

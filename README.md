@@ -24,9 +24,12 @@ bun install
 bun run demo:audit                                  # audits fixtures/sample-logs.jsonl
 bun run src/cli.ts audit /path/to/your-llm-calls.jsonl
 
-# Approach B — the live pre-flight scan of a repo
+# Approach B — pre-flight scan of a repo (read-only, estimated EOB)
 bun run demo                                        # scans fixtures/sample-repo
 bun run src/cli.ts scan /path/to/a/ts/project
+
+# Approach B, live — actually fix + verify (needs ANTHROPIC_API_KEY)
+ANTHROPIC_API_KEY=sk-ant-... bun run src/cli.ts scan /path/to/project --apply
 ```
 
 ### `audit` — the retroactive audit (Approach A)
@@ -70,13 +73,21 @@ Example output:
   saved ~$0.11  (92% cheaper)
 ```
 
-## What's real vs. stubbed in v1
+## Two fix modes
 
-**Real:** dep detection, `tsc` analysis + normalization, partition/routing, context-packet assembly, the Health Record, and every token count (chars/4 estimate over real code).
+`scan` is read-only and free; `scan --apply` is the live loop.
 
-**Stubbed (clearly flagged):**
-- The LLM fix itself — `DryRunFixer` estimates cost from real packet tokens but does not call a model or mutate files. The EOB is marked `estimated`. Drop in an `AnthropicFixer` (apply patch → re-run check → set `verified`) to make it live.
+- **`scan`** (default) — `DryRunFixer` estimates each escalation's cost from the real packet token count but does **not** call a model or touch files. The EOB is flagged `estimated`. Zero risk, zero spend.
+- **`scan --apply`** — `AnthropicFixer` ([`@anthropic-ai/sdk`](https://github.com/anthropics/anthropic-sdk-typescript)) sends each tight packet to the routed model (Haiku/Sonnet/Opus), gets a corrected snippet via **structured output**, writes it, then **re-runs `tsc` to verify the finding is gone**. It loops — re-triaging each pass so line shifts are handled — until no escalatable findings remain. Costs are **exact**, from the API's `usage`; the EOB reads `(actual)`. Needs `ANTHROPIC_API_KEY` (it refuses cleanly without one).
+
+## What's real vs. still stubbed
+
+**Real:** dep detection, `tsc` analysis + normalization, partition/routing, context-packet assembly, the Health Record, the `--apply` fix-and-verify loop, and — in `--apply` — exact token costs from the API.
+
+**Still stubbed / placeholder:**
+- Token *estimates* in read-only `scan` use chars/4 (real exact counts only arrive on `--apply`).
 - Pricing — `src/pricing/table.ts` holds placeholder rates; it's the integration seam for [llm-intel](https://github.com/basisoasis/llm-intel).
+- Local autofix (the `[local]` lane) is still reported, not yet applied — that codemod path is v2.
 
 ## The Codebase Health Record
 
@@ -104,7 +115,7 @@ src/
   detect/deps.ts      # dependency profile
   triage/             # analyzers → normalized Finding[]
   diagnose/           # partition + context-packet assembly
-  treat/              # model routing + the Fixer seam
+  treat/              # model routing + Fixer seam (DryRun estimate / Anthropic live)
   bill/eob.ts         # cost accounting + savings counterfactual
   record/health.ts    # the .tokenclinic/ Health Record
   cli.ts              # `tokenclinic audit` + `scan` — wires the loops together

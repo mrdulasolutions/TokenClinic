@@ -41,6 +41,7 @@ export interface Resolution {
   cost: number; // USD
   patched: boolean;
   verified: boolean; // a fix is not "done" until its source check passes again
+  patch?: string; // the corrected snippet that replaces the finding's context lines
 }
 
 // --- Audit (Approach A: the retroactive audit over existing call logs) ---

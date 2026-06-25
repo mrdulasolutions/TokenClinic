@@ -15,7 +15,7 @@ import { cost, estimateTokens } from "../pricing/table";
 const NAIVE_MODEL = "claude-opus-4-8"; // naive = throw the whole file at the top model
 const NAIVE_OUTPUT_TOKENS = 300;
 
-export function buildEOB(root: string, findings: Finding[]): EOB {
+export function buildEOB(root: string, findings: Finding[], estimated = true): EOB {
   const fileTokenCache = new Map<string, number>();
   const fileTokens = (file: string): number => {
     let t = fileTokenCache.get(file);
@@ -72,6 +72,6 @@ export function buildEOB(root: string, findings: Finding[]): EOB {
     naiveCost,
     saved: naiveCost - spend,
     byModel,
-    estimated: true,
+    estimated,
   };
 }
