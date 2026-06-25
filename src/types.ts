@@ -73,6 +73,32 @@ export interface AuditResult {
   estimated: boolean; // true if any call was bucketed heuristically (no category)
 }
 
+// --- Amortization (v2): synthesize a deterministic check from a recurring class ---
+
+// A generated check, stored as DATA not code: an ast-grep rule object plus the
+// fixtures that gate its promotion. Lives in .tokenclinic/rules/<id>.json once it
+// passes validation, or .tokenclinic/quarantine/ if it doesn't.
+export interface GeneratedRule {
+  id: string; // kebab-case; also the filename
+  language: string; // an ast-grep Lang key, e.g. "TypeScript"
+  message: string;
+  severity: Severity;
+  rule: Record<string, unknown>; // the ast-grep rule object, e.g. { pattern: "..." }
+  fix?: string; // optional ast-grep fix template (informational in v2)
+  origin?: string; // the analyzer rule this was amortized from, e.g. "TS2304"
+  fixtures: {
+    positive: string[]; // code the rule MUST flag
+    negative: string[]; // similar code the rule must NOT flag
+  };
+}
+
+// A group of recurring needs-llm findings of the same shape — the trigger for synthesis.
+export interface Cluster {
+  rule: string; // the source rule code shared by the group
+  message: string;
+  findings: Finding[];
+}
+
 // Explanation Of Benefits — the screenshot-able receipt.
 export interface EOB {
   total: number;

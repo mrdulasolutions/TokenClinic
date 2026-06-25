@@ -8,6 +8,9 @@ import { buildContext } from "./diagnose/context";
 import { DryRunFixer } from "./treat/fixer";
 import { AnthropicFixer } from "./treat/anthropic";
 import { runApplyLoop } from "./treat/apply";
+import { cluster } from "./amortize/cluster";
+import { synthesize } from "./amortize/synthesize";
+import { promote } from "./amortize/promote";
 import { buildEOB } from "./bill/eob";
 import { writeHealthRecord } from "./record/health";
 import { parseLog, audit } from "./audit/audit";
@@ -70,6 +73,43 @@ async function scanApply(target: string) {
   console.log(`\n${c.bold("🩺 Token Clinic")} ${c.dim(`— applied ${verified}/${fixed.length} fixes verified`)}\n`);
   printEOB(eob);
   console.log(c.dim(`  health record → ${relative(process.cwd(), recordDir)}/\n`));
+}
+
+// ── learn (v2): amortize recurring classes into local rules ─────────────────
+const CLUSTER_MIN = 3;
+
+async function learn(target: string) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.log(`${c.red("learn needs a model")} — set ANTHROPIC_API_KEY, then re-run.`);
+    process.exit(1);
+  }
+
+  const root = resolve(target);
+  const findings = partition(triage(root));
+  const clusters = cluster(findings, CLUSTER_MIN);
+
+  console.log(`\n${c.bold("🩺 Token Clinic — learn")} ${c.dim(`— ${relative(process.cwd(), root) || "."}`)}`);
+  if (clusters.length === 0) {
+    console.log(c.dim(`   no needs-llm class recurs ≥${CLUSTER_MIN}× — nothing to amortize yet.\n`));
+    return;
+  }
+
+  for (const cl of clusters) {
+    process.stdout.write(`  synthesizing ${c.bold(cl.rule)} ${c.dim(`(${cl.findings.length}×)`)} … `);
+    const rule = await synthesize(root, cl);
+    if (!rule) {
+      console.log(c.yellow("no usable rule returned"));
+      continue;
+    }
+    const p = promote(root, rule);
+    if (p.status === "promoted") {
+      console.log(`${c.green("✓ promoted")} ${c.dim(`→ rules/${rule.id}.json — this class is now $0 forever`)}`);
+    } else {
+      console.log(`${c.yellow("⚠ quarantined")} ${c.dim(rule.id)}`);
+      for (const f of p.failures) console.log(c.dim(`      ${f}`));
+    }
+  }
+  console.log(c.dim(`\n  promoted rules run on every future ${c.bold("scan")} — re-run scan to see the new $0 lane.\n`));
 }
 
 // ── shared rendering ────────────────────────────────────────────────────────
@@ -157,12 +197,15 @@ if (cmd === "scan") {
   await (apply ? scanApply(path ?? ".") : scan(path ?? "."));
 } else if (cmd === "audit") {
   runAudit(path);
+} else if (cmd === "learn") {
+  await learn(path ?? ".");
 } else {
   console.log(
     "usage:\n" +
       "  tokenclinic audit <logs.jsonl>   retroactive audit over past LLM calls\n" +
       "  tokenclinic scan [path]          read-only pre-flight (estimated EOB)\n" +
-      "  tokenclinic scan [path] --apply  live: fix + verify (needs ANTHROPIC_API_KEY)",
+      "  tokenclinic scan [path] --apply  live: fix + verify (needs ANTHROPIC_API_KEY)\n" +
+      "  tokenclinic learn [path]         amortize recurring classes → local rules (needs key)",
   );
   process.exit(1);
 }

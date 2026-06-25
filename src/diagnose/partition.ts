@@ -16,6 +16,12 @@ const MECHANICAL = new Set(["TS2304", "TS2307", "TS2552", "TS1005", "TS1109", "T
 
 export function partition(findings: Finding[]): Finding[] {
   for (const f of findings) {
+    // Findings from a promoted (amortized) rule are already a $0 on-device check —
+    // keep them in the autofix lane; don't reclassify by the TS-code maps.
+    if (f.source.startsWith("ast-grep:")) {
+      f.difficulty = "mechanical";
+      continue;
+    }
     const { fixability, difficulty } = classify(f.rule);
     f.fixability = fixability;
     f.difficulty = difficulty;

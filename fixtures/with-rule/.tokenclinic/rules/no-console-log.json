@@ -1,0 +1,12 @@
+{
+  "id": "no-console-log",
+  "language": "TypeScript",
+  "message": "Avoid console.log in committed code.",
+  "severity": "warning",
+  "rule": { "pattern": "console.log($A)" },
+  "origin": "demo",
+  "fixtures": {
+    "positive": ["console.log(x)", "console.log('hi')"],
+    "negative": ["logger.info(x)", "console.error(x)"]
+  }
+}

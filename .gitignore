@@ -1,4 +1,7 @@
 node_modules/
 *.log
-# health record written into scanned repos during local demos
-fixtures/**/.tokenclinic/
+# health-record outputs written into scanned repos during local demos.
+# (promoted rules under .tokenclinic/rules/ ARE committed — they're the asset.)
+fixtures/**/.tokenclinic/history.jsonl
+fixtures/**/.tokenclinic/profile.json
+fixtures/**/.tokenclinic/quarantine/

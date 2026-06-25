@@ -30,6 +30,10 @@ bun run src/cli.ts scan /path/to/a/ts/project
 
 # Approach B, live — actually fix + verify (needs ANTHROPIC_API_KEY)
 ANTHROPIC_API_KEY=sk-ant-... bun run src/cli.ts scan /path/to/project --apply
+
+# v2 — amortize a recurring class into a local rule (needs key), then it's $0 forever
+ANTHROPIC_API_KEY=sk-ant-... bun run src/cli.ts learn /path/to/project
+bun run src/cli.ts scan fixtures/with-rule    # demo: a promoted rule running for $0
 ```
 
 ### `audit` — the retroactive audit (Approach A)
@@ -101,9 +105,20 @@ Sequenced A → B → C, per the [office-hours design](docs/) — measure before
 - **B — the live scan (here):** `tokenclinic scan` — Triage + local autofix lane + escalation estimate + verify + EOB + Health Record. One language (TS). The recurring product, distributed as a self-controlled CLI (npm + GitHub Releases) — not an integration into harnesses you don't own.
 - **C — sell the moat (later):** open-core. Triage + receipt is the free funnel; charge for the compounding **Health Record** (promoted rules + fixtures + learned routing), shared team-wide.
 
-### Inside B: the amortization engine (v2)
+### v2 — the amortization engine (`learn`) — built
 
-When a `needs-llm` class recurs (≥3×), spend *one* model call to synthesize a deterministic check **as data, not code** — a text pattern via [fff](https://github.com/dmtrKovalenko/fff) (fast lane) or a structural rule via [ast-grep](https://ast-grep.github.io/) — validated against generated fixtures before promotion. That class is then $0 forever. fff also upgrades Diagnose-stage retrieval. This only holds for *eliminable* (bucket-1) findings; *routable* (bucket-2) tacit-judgment work is routed cheaper, never eliminated.
+When a `needs-llm` class recurs (≥3×), `tokenclinic learn` spends *one* model call to synthesize a deterministic check **as data, not code**: an [ast-grep](https://ast-grep.github.io/) rule object + test fixtures. The rule is **never trusted directly** — it must flag every positive fixture and none of the negatives (`src/amortize/validate.ts`) before it's promoted to `.tokenclinic/rules/`; failures go to `quarantine/`. Promoted rules then run on-device in every `scan` (`src/triage/analyzers/astgrep.ts`), landing in the `[local]` $0 lane. That class is **$0 forever** — pay once, run free.
+
+```
+src/amortize/
+  cluster.ts      # group recurring needs-llm findings (≥3×)
+  synthesize.ts   # ONE model call → ast-grep rule + fixtures (key-gated)
+  validate.ts     # the trust gate: rule must pass its fixtures
+  promote.ts      # → .tokenclinic/rules/ (promoted) or quarantine/
+  sg.ts           # ast-grep loader (@ast-grep/napi)
+```
+
+Only *eliminable* (bucket-1) findings amortize this way; *routable* (bucket-2) tacit-judgment work is routed cheaper, never eliminated. Still future: the [fff](https://github.com/dmtrKovalenko/fff) text-pattern fast lane and fff-powered Diagnose retrieval.
 
 ## Architecture
 
@@ -112,8 +127,9 @@ src/
   types.ts            # Finding / EOB / CallRecord — the records every stage shares
   pricing/table.ts    # model prices (llm-intel seam) + token estimate
   audit/              # Approach A: log ingest + bucket classifier + backwards EOB
+  amortize/           # v2: cluster → synthesize → validate → promote (ast-grep rules)
   detect/deps.ts      # dependency profile
-  triage/             # analyzers → normalized Finding[]
+  triage/             # analyzers (tsc + promoted ast-grep rules) → Finding[]
   diagnose/           # partition + context-packet assembly
   treat/              # model routing + Fixer seam (DryRun estimate / Anthropic live)
   bill/eob.ts         # cost accounting + savings counterfactual
