@@ -101,6 +101,21 @@ Because llm-intel is an OpenRouter catalog, **other providers come for free** on
 - **Pricing, audit, EOB, and routing are provider-agnostic.** Routing is declarative — drop a `.tokenclinic/routing.json` mapping difficulty classes to *any* model id (`{ "semantic": "openai/gpt-4o" }`) and pricing resolves it.
 - **Only the actual model call is provider-specific** — `--apply`/`learn` use the Anthropic SDK today; that single seam is what a future OpenRouter/LiteLLM client would swap, and nothing else changes.
 
+## Inside a harness (Claude Code) — advisory mode
+
+Standalone, TokenClinic calls a model itself (`--apply`). **Inside a harness, it shouldn't** — the harness owns the model, the key, and the billing. So in-harness it runs as an **advisory pre-flight gate**: it does the $0 local elimination and hands the host agent a machine report; the agent does the reasoning fixes with *its own* model.
+
+```bash
+tokenclinic scan <path> --json   # read-only, NO model call — a report for an agent
+```
+
+The report's `advice` is the contract:
+- `advice.escalate` — the work list; each carries a `context.snippet` (fix from this, don't crawl the repo) and a `recommendedModel` (how hard the fix is).
+- `advice.autoApply` — the `local` $0 lane (promoted rules + mechanical), apply directly.
+- `eob` — the receipt to report back ("41 fixed locally for $0, 6 escalated, saved ~$0.40").
+
+A drop-in Claude Code skill lives in [`skill/token-clinic/SKILL.md`](skill/token-clinic/SKILL.md) — it tells the agent to run `scan --json` before any fix pass and act on the `advice`. This is the original "install via a skill" path: TokenClinic's value in-harness is the elimination + tight packets + receipt, **not** the model call.
+
 ## The Codebase Health Record
 
 Each run writes `.tokenclinic/` into the scanned repo: `profile.json` (deps + analyzers) and an append-only `history.jsonl` (findings, spend, savings over time). v2 adds `rules/`, `quarantine/`, and `routing.json`. Every run reads it back, so every run gets cheaper and smarter — this is the compounding asset, not the router.
@@ -142,7 +157,10 @@ src/
   treat/              # model routing + Fixer seam (DryRun estimate / Anthropic live)
   bill/eob.ts         # cost accounting + savings counterfactual
   record/health.ts    # the .tokenclinic/ Health Record
-  cli.ts              # `tokenclinic audit` + `scan` — wires the loops together
+  scan.ts             # read-only scan assembly + the --json advisory contract
+  cli.ts              # audit / scan / scan --apply / learn — wires the loops together
 docs/
   design-token-clinic.md   # the office-hours strategy (A → B → C)
+skill/
+  token-clinic/SKILL.md    # Claude Code skill — advisory pre-flight gate
 ```

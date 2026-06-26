@@ -4,8 +4,7 @@ import type { Finding, EOB, AuditResult, Bucket } from "./types";
 import { detectDeps } from "./detect/deps";
 import { triage } from "./triage";
 import { partition } from "./diagnose/partition";
-import { buildContext } from "./diagnose/context";
-import { DryRunFixer } from "./treat/fixer";
+import { assembleScan, toReport } from "./scan";
 import { AnthropicFixer } from "./treat/anthropic";
 import { runApplyLoop } from "./treat/apply";
 import { loadRouting, routedModels } from "./treat/route";
@@ -19,30 +18,27 @@ import { parseLog, audit } from "./audit/audit";
 import { c, usd } from "./util";
 
 // ── scan (Approach B): read-only pre-flight, estimated EOB ──────────────────
-async function scan(target: string) {
+async function scan(target: string, json: boolean) {
   const root = resolve(target);
   const now = new Date().toISOString();
 
   loadRouting(root);
   const prices = await loadPrices(routedModels());
-  const deps = detectDeps(root);
-  const findings = partition(triage(root));
+  const data = await assembleScan(root);
+  const recordDir = writeHealthRecord(root, data.deps, data.findings, data.eob, now);
 
-  const fixer = new DryRunFixer();
-  for (const f of findings) {
-    if (f.fixability !== "needs-llm") continue;
-    f.context = buildContext(root, f);
-    f.resolution = (await fixer.fix(f)).resolution;
+  if (json) {
+    // The in-harness contract: emit findings + tight packets + recommended
+    // routing for a host agent to act on. No model is called here.
+    console.log(JSON.stringify(toReport(root, prices.source, data), null, 2));
+    return;
   }
-
-  const eob = buildEOB(root, findings, true);
-  const recordDir = writeHealthRecord(root, deps, findings, eob, now);
 
   const where = relative(process.cwd(), root) || ".";
   console.log(`\n${c.bold("🩺 Token Clinic")} ${c.dim(`— ${where}`)}`);
-  console.log(c.dim(`   ${deps.manager} project · ${Object.keys(deps.deps).length} deps · ${findings.length} findings · prices: ${prices.source}\n`));
-  for (const f of findings) printFinding(f);
-  printEOB(eob);
+  console.log(c.dim(`   ${data.deps.manager} project · ${Object.keys(data.deps.deps).length} deps · ${data.findings.length} findings · prices: ${prices.source}\n`));
+  for (const f of data.findings) printFinding(f);
+  printEOB(data.eob);
   console.log(c.dim(`  health record → ${relative(process.cwd(), recordDir)}/\n`));
 }
 
@@ -202,10 +198,12 @@ function reportAudit(source: string, a: AuditResult, priceSource: string) {
 // ── entry ────────────────────────────────────────────────────────────────────
 const [cmd, ...rest] = process.argv.slice(2);
 const apply = rest.includes("--apply") || rest.includes("--fix");
+const json = rest.includes("--json");
 const path = rest.find((a) => !a.startsWith("-"));
 
 if (cmd === "scan") {
-  await (apply ? scanApply(path ?? ".") : scan(path ?? "."));
+  if (apply) await scanApply(path ?? ".");
+  else await scan(path ?? ".", json);
 } else if (cmd === "audit") {
   await runAudit(path);
 } else if (cmd === "learn") {
@@ -215,6 +213,7 @@ if (cmd === "scan") {
     "usage:\n" +
       "  tokenclinic audit <logs.jsonl>   retroactive audit over past LLM calls\n" +
       "  tokenclinic scan [path]          read-only pre-flight (estimated EOB)\n" +
+      "  tokenclinic scan [path] --json   machine report for a host agent (no model call)\n" +
       "  tokenclinic scan [path] --apply  live: fix + verify (needs ANTHROPIC_API_KEY)\n" +
       "  tokenclinic learn [path]         amortize recurring classes → local rules (needs key)",
   );
