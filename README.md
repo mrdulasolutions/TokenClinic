@@ -1,62 +1,139 @@
 # 🩺 Token Clinic
 
-A pre-flight gate for coding agents. It runs cheap, deterministic analysis **on-device** before any model touches your code, routes only the irreducible work to the right-priced model, and prints a bill showing what you saved.
+[![npm](https://img.shields.io/npm/v/tokenclinic)](https://www.npmjs.com/package/tokenclinic)
+[![CI](https://github.com/mrdulasolutions/TokenClinic/actions/workflows/ci.yml/badge.svg)](https://github.com/mrdulasolutions/TokenClinic/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/tokenclinic)](LICENSE)
 
-> Thesis: most tokens in agentic coding are wasted having an expensive model rediscover what a cheap deterministic tool already knows. **Don't pay Opus to find a missing import.**
+**Stop paying a premium model to find a missing import.**
 
-## The clinic loop
+Token Clinic is a pre-flight gate for coding agents. It runs cheap, deterministic checks **on your machine** first, fixes for free what it can, sends only the genuinely-hard problems to a model — at the right price tier — and prints a receipt showing what you saved.
 
-| Stage | What it does |
-| --- | --- |
-| **Triage** | Detect deps, run on-device analyzers (v1: `tsc`), normalize everything into one `Finding` schema, rank by signal. Most findings die here, for $0. |
-| **Diagnose** | Partition findings: autofixable → handled locally; `needs-llm` → escalated with a *tight context packet* (the relevant lines, not the whole repo). |
-| **Treat** | Route each escalated fix by difficulty: mechanical → Haiku, semantic → Sonnet, architectural → Opus. Apply, then re-run the source check — a fix isn't done until it verifies. |
-| **Bill (EOB)** | Cost per fix + savings vs. the naive "dump the file at a top model" baseline. The screenshot-able receipt. |
+> Most tokens in agentic coding are wasted having an expensive model rediscover what a cheap local tool already knows. Token Clinic does the cheap part locally and only pays for the rest.
+
+---
+
+## Contents
+
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Commands](#commands)
+  - [`scan` — see what's wrong, for free](#scan--see-whats-wrong-for-free)
+  - [`scan --apply` — fix it](#scan---apply--fix-it)
+  - [`audit` — should you even bother?](#audit--should-you-even-bother)
+  - [`learn` — make a fix free forever](#learn--make-a-fix-free-forever)
+  - [`scan --json` — use it inside an agent](#scan---json--use-it-inside-an-agent)
+- [Use it in Claude Code](#use-it-in-claude-code)
+- [Configuration](#configuration)
+- [How it works](#how-it-works)
+- [Development](#development)
+- [Background & design](#background--design)
+
+---
 
 ## Install
 
-Runs on [Bun](https://bun.sh).
+Token Clinic runs on [Bun](https://bun.sh) (v1+).
 
 ```bash
-# global CLI
-bun add -g tokenclinic        # or, from a clone: bun link
+npm install -g tokenclinic    # or: bun add -g tokenclinic
+```
+
+Then run it anywhere:
+
+```bash
+tokenclinic scan ./my-project
+```
+
+No install? Use `npx`:
+
+```bash
+npx tokenclinic scan ./my-project
+```
+
+**What needs an API key:** `scan` (including `--json`) and `audit` are free and run offline. Only `scan --apply` and `learn` actually call a model — those need `ANTHROPIC_API_KEY`.
+
+> **Scope today:** `scan` / `--apply` / `learn` analyze **TypeScript/JavaScript** projects (via the TypeScript compiler). `audit` is language-agnostic — it reads call logs, not code.
+
+---
+
+## Quick start
+
+```bash
+# 1. See what's wrong in a TypeScript project — free, nothing leaves your machine
 tokenclinic scan ./my-project
 
-# or run from a clone without installing
-bun install
-bun run src/cli.ts scan ./my-project
+# 2. Let it fix the real problems with the right-priced model
+export ANTHROPIC_API_KEY=sk-ant-...
+tokenclinic scan ./my-project --apply
 ```
 
-`scan` (incl. `--json`), `audit`, and `learn`'s clustering are free and offline-capable. `scan --apply` and `learn`'s synthesis call a model and need `ANTHROPIC_API_KEY`.
+`scan` prints findings and a bill:
 
-## The commands
+```text
+🩺 Token Clinic — my-project
+   node project · 14 deps · 5 findings · prices: llm-intel
 
-Token Clinic ships the strategically-correct **first move** (the retroactive audit) and the **recurring product** (the live scan):
+  ● TS2322 [semantic→sonnet-4-6] Type 'number' is not assignable to type 'string'.
+     src/index.ts:4
+  ● TS6133 [local] 'unused' is declared but its value is never read.
+     src/index.ts:5
+  ● TS2304 [mechanical→haiku-4-5] Cannot find name 'radius'.
+     src/index.ts:8
+  ● TS2339 [semantic→sonnet-4-6] Property 'email' does not exist on type 'User'.
+     src/index.ts:16
+
+  Explanation of Benefits (estimated — LLM step stubbed)
+    5 findings
+    1 fixed on-device   · $0.00
+    4 escalated to a model
+      → claude-sonnet-4-6    2× $0.0070
+      → claude-haiku-4-5     2× $0.0023
+  clinic spend   $0.0093
+  naive cost     $0.04 (dump each file at the top model)
+  saved ~$0.03  (77% cheaper)
+```
+
+Read it like this:
+- **`[local]`** findings are fixed on your machine for **$0** — a model never sees them.
+- **`[mechanical→haiku-4-5]` / `[semantic→sonnet-4-6]`** are escalated to the *cheapest model that can handle that difficulty*.
+- The **clinic spend vs. naive cost** line is the point: what you'd pay with Token Clinic vs. throwing whole files at a top model.
+
+---
+
+## Commands
+
+### `scan` — see what's wrong, for free
+
+Read-only. Runs the type checker plus any local rules, sorts findings into a `local` ($0) lane and a `model` lane, and estimates the cost. **Calls nothing, changes nothing.**
 
 ```bash
-# Approach A — measure the thesis from logs you already have ($0 risk, no code read)
-bun run demo:audit                                  # audits fixtures/sample-logs.jsonl
-bun run src/cli.ts audit /path/to/your-llm-calls.jsonl
-
-# Approach B — pre-flight scan of a repo (read-only, estimated EOB)
-bun run demo                                        # scans fixtures/sample-repo
-bun run src/cli.ts scan /path/to/a/ts/project
-
-# Approach B, live — actually fix + verify (needs ANTHROPIC_API_KEY)
-ANTHROPIC_API_KEY=sk-ant-... bun run src/cli.ts scan /path/to/project --apply
-
-# v2 — amortize a recurring class into a local rule (needs key), then it's $0 forever
-ANTHROPIC_API_KEY=sk-ant-... bun run src/cli.ts learn /path/to/project
-bun run src/cli.ts scan fixtures/with-rule    # demo: a promoted rule running for $0
+tokenclinic scan ./my-project
 ```
 
-### `audit` — the retroactive audit (Approach A)
+Use it to preview the work and the savings before spending anything.
 
-Run before building anything live. Ingests a JSONL of past LLM calls and prints the EOB **backwards** — what you spent, the *eliminable-class fraction* (the whole bet), and what the clinic loop would have saved. Runs entirely on exported logs, so there's no autofix risk and no code leaves the machine.
+### `scan --apply` — fix it
 
+The live loop. For each escalated finding it sends a *tight packet* (the relevant lines, not the whole repo) to the routed model, gets a corrected snippet back, writes it, then **re-runs the type checker to confirm the error is gone**. A patch that makes things worse is automatically reverted. Costs shown are exact (from the API's usage).
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+tokenclinic scan ./my-project --apply
 ```
-🩺 Token Clinic — retroactive audit · fixtures/sample-logs.jsonl
-   12 calls · $0.20 spent · prices: snapshot (estimated — some calls bucketed heuristically)
+
+Refuses cleanly if no key is set — run plain `scan` for the free estimate instead.
+
+### `audit` — should you even bother?
+
+Point it at a log of your past LLM calls and it prints the bill **backwards**: how much you spent, and how much of it was "eliminable" — work a local tool could have done for $0. Runs entirely on the exported logs; **no code leaves your machine.**
+
+```bash
+tokenclinic audit ./my-llm-calls.jsonl
+```
+
+```text
+🩺 Token Clinic — retroactive audit · my-llm-calls.jsonl
+   12 calls · $0.20 spent · prices: llm-intel
 
   ● eliminable   6 calls    $0.09  42% of spend · killed on-device → $0
   ● routable     3 calls    $0.05  24% of spend · re-priced to cheapest tier
@@ -67,114 +144,131 @@ Run before building anything live. Ingests a JSONL of past LLM calls and prints 
   would have saved ~$0.12  (59% cheaper)
 ```
 
-Log format is one JSON object per line: `{ "model", "inputTokens", "outputTokens", "task"?, "category"? }`. A `category` is authoritative; without one, the call is bucketed heuristically from `task` and the audit is flagged `estimated`.
+**Log format** — one JSON object per line (JSONL):
 
-### `scan` — the live pre-flight gate (Approach B)
-
-Example output:
-
-```
-🩺 Token Clinic — fixtures/sample-repo
-   node project · 1 deps · 5 findings
-
-  ● TS2322 [semantic→sonnet-4-6] Type 'number' is not assignable to type 'string'.
-  ● TS6133 [local]               'unused' is declared but its value is never read.
-  ● TS2304 [mechanical→haiku-4-5] Cannot find name 'radius'.
-  ...
-
-  Explanation of Benefits (estimated — LLM step stubbed)
-    5 findings
-    1 fixed on-device   · $0.00
-    4 escalated to a model
-  clinic spend   $0.0093
-  naive cost     $0.12  (dump each file at the top model)
-  saved ~$0.11  (92% cheaper)
+```jsonc
+{ "model": "claude-opus-4-8", "inputTokens": 1500, "outputTokens": 250, "task": "add missing import", "category": "import" }
 ```
 
-## Two fix modes
+`model`, `inputTokens`, `outputTokens` are required. `category` (e.g. `import`, `lint`, `refactor`, `design`) is authoritative when present; otherwise the call is bucketed heuristically from `task` and the audit is flagged `estimated`.
 
-`scan` is read-only and free; `scan --apply` is the live loop.
+### `learn` — make a fix free forever
 
-- **`scan`** (default) — `DryRunFixer` estimates each escalation's cost from the real packet token count but does **not** call a model or touch files. The EOB is flagged `estimated`. Zero risk, zero spend.
-- **`scan --apply`** — `AnthropicFixer` ([`@anthropic-ai/sdk`](https://github.com/anthropics/anthropic-sdk-typescript)) sends each tight packet to the routed model (Haiku/Sonnet/Opus), gets a corrected snippet via **structured output**, writes it, then **re-runs `tsc` to verify the finding is gone**. It loops — re-triaging each pass so line shifts are handled — until no escalatable findings remain. Costs are **exact**, from the API's `usage`; the EOB reads `(actual)`. Needs `ANTHROPIC_API_KEY` (it refuses cleanly without one).
-
-## What's real vs. still stubbed
-
-**Real:** dep detection, `tsc` analysis + normalization, partition/routing, context-packet assembly, the Health Record, the `--apply` fix-and-verify loop, and — in `--apply` — exact token costs from the API.
-
-**Still stubbed / placeholder:**
-- Token *estimates* in read-only `scan` use chars/4 (real exact counts only arrive on `--apply`).
-- Local autofix (the `[local]` lane) is still reported, not yet applied — that codemod path is v2.
-
-## Pricing & other providers
-
-Prices resolve through [llm-intel](https://github.com/basisoasis/llm-intel) (the OpenRouter catalog) at command start, with a committed **offline snapshot** fallback so read-only `scan` never *requires* network. The footer shows which source was used (`prices: llm-intel` / `prices: snapshot`). An unknown model prices as `?` and is surfaced — never a fabricated number.
-
-Because llm-intel is an OpenRouter catalog, **other providers come for free** on the cost side: anything keyed `openai/…`, `google/…`, etc. prices correctly. The split that makes this work:
-
-- **Pricing, audit, EOB, and routing are provider-agnostic.** Routing is declarative — drop a `.tokenclinic/routing.json` mapping difficulty classes to *any* model id (`{ "semantic": "openai/gpt-4o" }`) and pricing resolves it.
-- **Only the actual model call is provider-specific** — `--apply`/`learn` use the Anthropic SDK today; that single seam is what a future OpenRouter/LiteLLM client would swap, and nothing else changes.
-
-## Inside a harness (Claude Code) — advisory mode
-
-Standalone, TokenClinic calls a model itself (`--apply`). **Inside a harness, it shouldn't** — the harness owns the model, the key, and the billing. So in-harness it runs as an **advisory pre-flight gate**: it does the $0 local elimination and hands the host agent a machine report; the agent does the reasoning fixes with *its own* model.
+When the same kind of problem keeps getting escalated, `learn` spends **one** model call to write a deterministic [ast-grep](https://ast-grep.github.io/) rule that catches it — then validates that rule against generated test fixtures before trusting it. Once promoted, that rule runs locally in every future `scan` for **$0**. Pay once, run free.
 
 ```bash
-tokenclinic scan <path> --json   # read-only, NO model call — a report for an agent
+export ANTHROPIC_API_KEY=sk-ant-...
+tokenclinic learn ./my-project
 ```
 
-The report's `advice` is the contract:
-- `advice.escalate` — the work list; each carries a `context.snippet` (fix from this, don't crawl the repo) and a `recommendedModel` (how hard the fix is).
-- `advice.autoApply` — the `local` $0 lane (promoted rules + mechanical), apply directly.
-- `eob` — the receipt to report back ("41 fixed locally for $0, 6 escalated, saved ~$0.40").
+Promoted rules are written to `.tokenclinic/rules/` (commit them — they're a shared asset). Rules that fail their fixtures are quarantined, never run.
 
-A drop-in Claude Code skill lives in [`skill/token-clinic/SKILL.md`](skill/token-clinic/SKILL.md) — it tells the agent to run `scan --json` before any fix pass and act on the `advice`. This is the original "install via a skill" path: TokenClinic's value in-harness is the elimination + tight packets + receipt, **not** the model call.
+### `scan --json` — use it inside an agent
 
-## The Codebase Health Record
+Same read-only scan, emitted as a machine-readable report instead of a pretty table. **No model call.** A host agent (see below) reads the `advice` and does the fixes with its own model.
 
-Each run writes `.tokenclinic/` into the scanned repo: `profile.json` (deps + analyzers) and an append-only `history.jsonl` (findings, spend, savings over time). v2 adds `rules/`, `quarantine/`, and `routing.json`. Every run reads it back, so every run gets cheaper and smarter — this is the compounding asset, not the router.
-
-## Roadmap
-
-Sequenced A → B → C, per the [office-hours design](docs/) — measure before you build, sell the receipt, price the moat last.
-
-- **A — the audit (here):** `tokenclinic audit` over existing logs. Puts a real dollar number on the unverified core thesis (the eliminable-class fraction) with zero code and zero risk. Earns revenue as a paid/concierge audit. **Gate:** fraction clearly large (>40%) → build B; clearly small (<15%) → walk away.
-- **B — the live scan (here):** `tokenclinic scan` — Triage + local autofix lane + escalation estimate + verify + EOB + Health Record. One language (TS). The recurring product, distributed as a self-controlled CLI (npm + GitHub Releases) — not an integration into harnesses you don't own.
-- **C — sell the moat (later):** open-core. Triage + receipt is the free funnel; charge for the compounding **Health Record** (promoted rules + fixtures + learned routing), shared team-wide.
-
-### v2 — the amortization engine (`learn`) — built
-
-When a `needs-llm` class recurs (≥3×), `tokenclinic learn` spends *one* model call to synthesize a deterministic check **as data, not code**: an [ast-grep](https://ast-grep.github.io/) rule object + test fixtures. The rule is **never trusted directly** — it must flag every positive fixture and none of the negatives (`src/amortize/validate.ts`) before it's promoted to `.tokenclinic/rules/`; failures go to `quarantine/`. Promoted rules then run on-device in every `scan` (`src/triage/analyzers/astgrep.ts`), landing in the `[local]` $0 lane. That class is **$0 forever** — pay once, run free.
-
-```
-src/amortize/
-  cluster.ts      # group recurring needs-llm findings (≥3×)
-  synthesize.ts   # ONE model call → ast-grep rule + fixtures (key-gated)
-  validate.ts     # the trust gate: rule must pass its fixtures
-  promote.ts      # → .tokenclinic/rules/ (promoted) or quarantine/
-  sg.ts           # ast-grep loader (@ast-grep/napi)
+```bash
+tokenclinic scan ./my-project --json
 ```
 
-Only *eliminable* (bucket-1) findings amortize this way; *routable* (bucket-2) tacit-judgment work is routed cheaper, never eliminated. Still future: the [fff](https://github.com/dmtrKovalenko/fff) text-pattern fast lane and fff-powered Diagnose retrieval.
-
-## Architecture
-
+```jsonc
+{
+  "eob": { "fixedLocally": 1, "escalated": 4, "saved": 0.032, ... },
+  "advice": {
+    "autoApply": ["<ids of free local-lane findings>"],
+    "escalate":  [{ "id": "...", "file": "src/x.ts", "line": 4, "recommendedModel": "claude-sonnet-4-6" }]
+  },
+  "findings": [ { "rule": "TS2322", "lane": "model", "context": { "snippet": "...", "startLine": 1 }, ... } ]
+}
 ```
-src/
-  types.ts            # Finding / EOB / CallRecord — the records every stage shares
-  pricing/            # llm-intel adapter + offline snapshot + id/unit normalize
-  audit/              # Approach A: log ingest + bucket classifier + backwards EOB
-  amortize/           # v2: cluster → synthesize → validate → promote (ast-grep rules)
-  detect/deps.ts      # dependency profile
-  triage/             # analyzers (tsc + promoted ast-grep rules) → Finding[]
-  diagnose/           # partition + context-packet assembly
-  treat/              # model routing + Fixer seam (DryRun estimate / Anthropic live)
-  bill/eob.ts         # cost accounting + savings counterfactual
-  record/health.ts    # the .tokenclinic/ Health Record
-  scan.ts             # read-only scan assembly + the --json advisory contract
-  cli.ts              # audit / scan / scan --apply / learn — wires the loops together
-docs/
-  design-token-clinic.md   # the office-hours strategy (A → B → C)
-skill/
-  token-clinic/SKILL.md    # Claude Code skill — advisory pre-flight gate
+
+---
+
+## Use it in Claude Code
+
+Inside a coding agent like Claude Code, **the harness already owns the model, the key, and the bill** — so Token Clinic shouldn't make its own calls there. Instead it runs as an advisory pre-flight gate: it does the free local elimination and hands the agent a tight packet for each remaining problem, and the agent fixes them with its own model.
+
+A ready-to-use skill ships in [`skill/token-clinic/SKILL.md`](skill/token-clinic/SKILL.md). Drop it into your Claude Code skills directory and the agent will run `tokenclinic scan --json` before any fix pass and act on the `advice` — fixing real problems from the packets instead of crawling your repo to rediscover them.
+
+---
+
+## Configuration
+
+### API key
+
+`scan --apply` and `learn` read `ANTHROPIC_API_KEY` from the environment. Everything else works without it.
+
+### Pricing (and other providers)
+
+Prices come from [llm-intel](https://github.com/basisoasis/llm-intel) (the OpenRouter catalog — every provider) at startup, with a built-in **offline snapshot** so `scan` never *requires* network. The footer shows which was used: `prices: llm-intel` or `prices: snapshot`. An unknown model is flagged, never priced with a made-up number.
+
+### Custom routing / other models — `.tokenclinic/routing.json`
+
+By default, fixes route by difficulty to Anthropic models (mechanical → Haiku, semantic → Sonnet, architectural → Opus). Override per class with **any** model id, including other providers:
+
+```json
+{
+  "mechanical": "claude-haiku-4-5",
+  "semantic": "openai/gpt-4o",
+  "architectural": "claude-opus-4-8"
+}
 ```
+
+Pricing resolves whatever you configure. (Today the live `--apply`/`learn` calls go through the Anthropic SDK; the cost, audit, and routing layers are fully provider-agnostic.)
+
+### The Health Record — `.tokenclinic/`
+
+Each run writes a `.tokenclinic/` directory into the scanned repo:
+
+- `profile.json` — detected deps + analyzers
+- `history.jsonl` — findings, spend, and savings over time
+- `rules/` — promoted local rules (commit these)
+- `quarantine/` — generated rules that failed validation
+
+Every run reads it back, so the more you use Token Clinic on a repo, the cheaper and sharper it gets. Add the throwaway parts to your `.gitignore` if you like, but **keep `rules/`** — that's the compounding asset:
+
+```gitignore
+.tokenclinic/history.jsonl
+.tokenclinic/profile.json
+.tokenclinic/quarantine/
+```
+
+---
+
+## How it works
+
+Four stages, one record (`Finding`) flowing through each:
+
+| Stage | What it does |
+| --- | --- |
+| **Triage** | Run on-device analyzers (the TypeScript compiler + your promoted rules), normalize everything into one finding list. Most findings die here, for $0. |
+| **Diagnose** | Split findings into the local ($0) lane and the model lane; for the model lane, assemble a *tight context packet* — the relevant lines, not the whole repo. |
+| **Treat** | Route each escalation to the cheapest model that can handle its difficulty, apply the fix, then re-run the checker to verify. Revert anything that makes it worse. |
+| **Bill** | Print the receipt: cost per fix and savings vs. dumping whole files at a top model. |
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/mrdulasolutions/TokenClinic.git
+cd TokenClinic
+bun install
+
+bun test          # run the test suite
+bun run typecheck # tsc --noEmit
+bun run demo      # scan the sample project
+bun run demo:audit
+```
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECURITY.md).
+
+---
+
+## Background & design
+
+Token Clinic was built command-by-command in a deliberate sequence — measure demand with `audit` before building the live loop, then add the amortization moat. The full product reasoning lives in [`docs/design-token-clinic.md`](docs/design-token-clinic.md). Changelog: [`CHANGELOG.md`](CHANGELOG.md).
+
+## License
+
+[MIT](LICENSE) © mrdulasolutions
