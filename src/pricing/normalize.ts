@@ -15,6 +15,11 @@ export function toOpenRouterId(id: string): string {
   return BARE_TO_OPENROUTER[id] ?? `anthropic/${id}`;
 }
 
+// The inverse, for the direct Anthropic SDK which wants a bare id.
+export function toAnthropicId(id: string): string {
+  return id.startsWith("anthropic/") ? id.slice("anthropic/".length) : id;
+}
+
 // llm-intel reports an amount + a unit; normalize everything to $/1M tokens.
 // Non-token units (per_image / per_request) aren't token pricing → null.
 export function perMillion(amount: unknown, unit: string): number | null {

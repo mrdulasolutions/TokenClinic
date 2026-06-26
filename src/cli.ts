@@ -5,7 +5,8 @@ import { detectDeps } from "./detect/deps";
 import { triage } from "./triage";
 import { partition } from "./diagnose/partition";
 import { assembleScan, toReport } from "./scan";
-import { AnthropicFixer } from "./treat/anthropic";
+import { ModelFixer } from "./treat/modelfixer";
+import { hasProvider } from "./llm/completer";
 import { runApplyLoop } from "./treat/apply";
 import { loadRouting, routedModels } from "./treat/route";
 import { loadPrices } from "./pricing/llmIntel";
@@ -44,9 +45,9 @@ async function scan(target: string, json: boolean) {
 
 // ── scan --apply (Approach B, live): iterative fix + verify ─────────────────
 async function scanApply(target: string) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.log(`${c.red("scan --apply needs a model")} — set ANTHROPIC_API_KEY, then re-run.`);
-    console.log(c.dim("  (without it, run plain `tokenclinic scan` for the estimated EOB.)"));
+  if (!hasProvider()) {
+    console.log(`${c.red("scan --apply needs a model")} — set ${c.bold("OPENROUTER_API_KEY")} (any model) or ${c.bold("ANTHROPIC_API_KEY")} (Claude), then re-run.`);
+    console.log(c.dim("  (without one, run plain `tokenclinic scan` for the estimated EOB.)"));
     process.exit(1);
   }
 
@@ -56,7 +57,7 @@ async function scanApply(target: string) {
   await loadPrices(routedModels());
   const deps = detectDeps(root);
 
-  const { before, fixed } = await runApplyLoop(root, new AnthropicFixer());
+  const { before, fixed } = await runApplyLoop(root, new ModelFixer());
 
   for (const f of fixed) {
     const ok = f.resolution?.verified;
@@ -81,8 +82,8 @@ async function scanApply(target: string) {
 const CLUSTER_MIN = 3;
 
 async function learn(target: string) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.log(`${c.red("learn needs a model")} — set ANTHROPIC_API_KEY, then re-run.`);
+  if (!hasProvider()) {
+    console.log(`${c.red("learn needs a model")} — set ${c.bold("OPENROUTER_API_KEY")} or ${c.bold("ANTHROPIC_API_KEY")}, then re-run.`);
     process.exit(1);
   }
 

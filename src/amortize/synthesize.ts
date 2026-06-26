@@ -1,11 +1,13 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { Cluster, GeneratedRule } from "../types";
 import { buildContext } from "../diagnose/context";
+import { getCompleter } from "../llm/completer";
 
 // Spend ONE model call to turn a recurring class into a deterministic ast-grep
 // rule + fixtures. The output is never trusted directly — it goes through the
-// fixture gate (validate.ts) before it can be promoted. This is the only place
-// in amortization that costs tokens; everything downstream is free and local.
+// fixture gate (validate.ts) before promotion. Goes through the Completer, so it
+// works with whatever provider is configured (OpenRouter or Anthropic).
+
+const SYNTH_MODEL = "claude-opus-4-8"; // a reasoning task — worth the top model once
 
 const SYSTEM =
   "You author ast-grep rules. Given several real examples of the same class of " +
@@ -29,11 +31,12 @@ const SCHEMA = {
 };
 
 export async function synthesize(root: string, cl: Cluster, language = "TypeScript"): Promise<GeneratedRule | null> {
-  const client = new Anthropic();
+  const completer = getCompleter(SYNTH_MODEL);
+  if (!completer) return null;
 
   const examples = cl.findings
     .slice(0, 4)
-    .map((f, i) => `Example ${i + 1} (${f.file}:${f.line}) — ${f.message}\n` + "```\n" + (buildContext(root, f).snippet) + "\n```")
+    .map((f, i) => `Example ${i + 1} (${f.file}:${f.line}) — ${f.message}\n` + "```\n" + buildContext(root, f).snippet + "\n```")
     .join("\n\n");
 
   const user =
@@ -41,18 +44,10 @@ export async function synthesize(root: string, cl: Cluster, language = "TypeScri
     `These ${cl.findings.length} findings are all "${cl.rule}: ${cl.message}".\n` +
     `Author an ast-grep rule that catches this class on-device, with fixtures.\n\n${examples}`;
 
-  const res = await client.messages.create({
-    // synthesis is a reasoning task — use the top model once; it pays for itself forever
-    model: "claude-opus-4-8",
-    max_tokens: 2000,
-    system: SYSTEM,
-    messages: [{ role: "user", content: user }],
-    output_config: { format: { type: "json_schema", schema: SCHEMA } },
-  });
+  const res = await completer.complete({ model: SYNTH_MODEL, system: SYSTEM, user, schema: SCHEMA });
 
-  const text = res.content.find((b) => b.type === "text")?.text ?? "{}";
   try {
-    const o = JSON.parse(text) as { id: string; message: string; ruleJson: string; positive: string[]; negative: string[] };
+    const o = JSON.parse(res.text) as { id: string; message: string; ruleJson: string; positive: string[]; negative: string[] };
     return {
       id: o.id,
       language,
@@ -63,6 +58,6 @@ export async function synthesize(root: string, cl: Cluster, language = "TypeScri
       fixtures: { positive: o.positive, negative: o.negative },
     };
   } catch {
-    return null; // malformed output — the cluster simply isn't amortized this run
+    return null;
   }
 }
