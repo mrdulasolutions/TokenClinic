@@ -1,6 +1,6 @@
 {
   "name": "tokenclinic",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Pre-flight gate for coding agents: cheap local analysis first, route only the irreducible to the right-priced model, print the bill.",
   "type": "module",
   "license": "MIT",

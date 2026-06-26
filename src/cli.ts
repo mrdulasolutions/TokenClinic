@@ -3,7 +3,6 @@ import { resolve, relative } from "node:path";
 import type { Finding, EOB, AuditResult, Bucket } from "./types";
 import { detectDeps } from "./detect/deps";
 import { triage } from "./triage";
-import { partition } from "./diagnose/partition";
 import { assembleScan, toReport } from "./scan";
 import { ModelFixer } from "./treat/modelfixer";
 import { hasProvider } from "./llm/completer";
@@ -37,7 +36,8 @@ async function scan(target: string, json: boolean) {
 
   const where = relative(process.cwd(), root) || ".";
   console.log(`\n${c.bold("🩺 Token Clinic")} ${c.dim(`— ${where}`)}`);
-  console.log(c.dim(`   ${data.deps.manager} project · ${Object.keys(data.deps.deps).length} deps · ${data.findings.length} findings · prices: ${prices.source}\n`));
+  const analyzers = data.analyzers.length ? data.analyzers.join(", ") : "none";
+  console.log(c.dim(`   ${data.deps.manager} project · ${Object.keys(data.deps.deps).length} deps · ${data.findings.length} findings · analyzers: ${analyzers} · prices: ${prices.source}\n`));
   for (const f of data.findings) printFinding(f);
   printEOB(data.eob);
   console.log(c.dim(`  health record → ${relative(process.cwd(), recordDir)}/\n`));
@@ -89,7 +89,7 @@ async function learn(target: string) {
 
   const root = resolve(target);
   loadRouting(root);
-  const findings = partition(triage(root));
+  const findings = triage(root);
   const clusters = cluster(findings, CLUSTER_MIN);
 
   console.log(`\n${c.bold("🩺 Token Clinic — learn")} ${c.dim(`— ${relative(process.cwd(), root) || "."}`)}`);

@@ -52,7 +52,7 @@ npx tokenclinic scan ./my-project
 
 **What needs an API key:** `scan` (including `--json`) and `audit` are free and run offline. Only `scan --apply` and `learn` actually call a model — those need `ANTHROPIC_API_KEY`.
 
-> **Scope today:** `scan` / `--apply` / `learn` analyze **TypeScript/JavaScript** projects (via the TypeScript compiler). `audit` is language-agnostic — it reads call logs, not code.
+> **Scope today:** the live analyzers cover **TypeScript/JavaScript** (via the TypeScript compiler) plus any promoted ast-grep rules. Analyzers are a registry — adding Python/Rust/etc. is adding one entry (a `detect` + a `run`), the rest of the pipeline is language-agnostic. `audit` is already language-agnostic (it reads logs, not code).
 
 ---
 
@@ -194,9 +194,14 @@ A ready-to-use skill ships in [`skill/token-clinic/SKILL.md`](skill/token-clinic
 
 ## Configuration
 
-### API key
+### API keys
 
-`scan --apply` and `learn` read `ANTHROPIC_API_KEY` from the environment. Everything else works without it.
+Only `scan --apply` and `learn` call a model. They accept either provider:
+
+- **`OPENROUTER_API_KEY`** — recommended. One key routes to **any** provider/model (OpenAI, Google, Anthropic, Llama, …) through [OpenRouter](https://openrouter.ai), using the same ids the pricing catalog uses.
+- **`ANTHROPIC_API_KEY`** — used directly for `claude-*` models when OpenRouter isn't set.
+
+Everything else (`scan`, `scan --json`, `audit`) works with no key at all.
 
 ### Pricing (and other providers)
 
@@ -214,7 +219,7 @@ By default, fixes route by difficulty to Anthropic models (mechanical → Haiku,
 }
 ```
 
-Pricing resolves whatever you configure. (Today the live `--apply`/`learn` calls go through the Anthropic SDK; the cost, audit, and routing layers are fully provider-agnostic.)
+Pricing **and the live calls** resolve whatever you configure: with `OPENROUTER_API_KEY` set, `--apply`/`learn` route any model through OpenRouter; otherwise `claude-*` models go through the Anthropic SDK directly.
 
 ### The Health Record — `.tokenclinic/`
 

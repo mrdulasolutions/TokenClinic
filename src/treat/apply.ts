@@ -3,7 +3,6 @@ import { join } from "node:path";
 import type { Finding } from "../types";
 import type { Fixer } from "./fixer";
 import { triage } from "../triage";
-import { partition } from "../diagnose/partition";
 import { buildContext } from "../diagnose/context";
 
 // The live apply loop, decoupled from the CLI and the concrete fixer so it can be
@@ -23,12 +22,12 @@ export interface ApplyResult {
 }
 
 export async function runApplyLoop(root: string, fixer: Fixer, maxPasses = 25): Promise<ApplyResult> {
-  const before = partition(triage(root));
+  const before = triage(root);
   const attempted = new Set<string>();
   const fixed: Finding[] = [];
 
   for (let pass = 0; pass < maxPasses; pass++) {
-    const current = partition(triage(root));
+    const current = triage(root);
     const totalBefore = current.length;
     const target = current.find((f) => f.fixability === "needs-llm" && !attempted.has(f.id));
     if (!target) break;
@@ -50,7 +49,7 @@ export async function runApplyLoop(root: string, fixer: Fixer, maxPasses = 25): 
     const original = readFileSync(path, "utf8");
     writeSnippet(path, target, newSnippet);
 
-    const after = partition(triage(root));
+    const after = triage(root);
     if (after.length > totalBefore) {
       // The patch introduced more problems than it solved — revert.
       writeFileSync(path, original);

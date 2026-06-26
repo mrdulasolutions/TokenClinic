@@ -7,7 +7,6 @@ import { runRule } from "../src/amortize/sg";
 import { validate } from "../src/amortize/validate";
 import { cluster } from "../src/amortize/cluster";
 import { runAstGrep } from "../src/triage/analyzers/astgrep";
-import { partition } from "../src/diagnose/partition";
 
 const goodRule = (): GeneratedRule => ({
   id: "no-console-log",
@@ -61,7 +60,7 @@ test("runAstGrep runs a promoted rule and yields $0 autofix findings", () => {
     writeFileSync(join(dir, ".tokenclinic", "rules", "no-console-log.json"), JSON.stringify(goodRule()));
     writeFileSync(join(dir, "src/a.ts"), "console.log(1);\nconsole.log(2);\nconst x = 3;\n");
 
-    const findings = partition(runAstGrep(dir));
+    const findings = runAstGrep(dir); // analyzer classifies its own findings
     expect(findings.length).toBe(2);
     expect(findings.every((f) => f.source === "ast-grep:no-console-log")).toBe(true);
     expect(findings.every((f) => f.fixability === "autofix")).toBe(true); // the $0 lane

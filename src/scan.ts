@@ -1,7 +1,6 @@
 import type { Finding, EOB } from "./types";
 import { detectDeps, type DepProfile } from "./detect/deps";
-import { triage } from "./triage";
-import { partition } from "./diagnose/partition";
+import { triage, activeAnalyzers } from "./triage";
 import { buildContext } from "./diagnose/context";
 import { DryRunFixer } from "./treat/fixer";
 import { buildEOB } from "./bill/eob";
@@ -12,13 +11,15 @@ import { buildEOB } from "./bill/eob";
 
 export interface ScanData {
   deps: DepProfile;
+  analyzers: string[]; // which analyzers fired (the active registry for this repo)
   findings: Finding[];
   eob: EOB;
 }
 
 export async function assembleScan(root: string): Promise<ScanData> {
   const deps = detectDeps(root);
-  const findings = partition(triage(root));
+  const analyzers = activeAnalyzers(root).map((a) => a.name);
+  const findings = triage(root);
 
   const fixer = new DryRunFixer();
   for (const f of findings) {
@@ -27,7 +28,7 @@ export async function assembleScan(root: string): Promise<ScanData> {
     f.resolution = (await fixer.fix(f)).resolution; // routed model = the recommendation
   }
 
-  return { deps, findings, eob: buildEOB(root, findings, true) };
+  return { deps, analyzers, findings, eob: buildEOB(root, findings, true) };
 }
 
 // --- machine report (the in-harness integration contract) ---
@@ -38,6 +39,7 @@ export interface ScanReport {
   version: string;
   root: string;
   prices: string;
+  analyzers: string[];
   deps: { manager: string; count: number };
   eob: EOB;
   findings: Array<{
@@ -64,11 +66,12 @@ export interface ScanReport {
 
 const laneOf = (f: Finding): Lane => (f.fixability === "autofix" ? "local" : f.fixability === "ignore" ? "ignore" : "model");
 
-export function toReport(root: string, prices: string, { deps, findings, eob }: ScanData): ScanReport {
+export function toReport(root: string, prices: string, { deps, analyzers, findings, eob }: ScanData): ScanReport {
   return {
     version: "0.1",
     root,
     prices,
+    analyzers,
     deps: { manager: deps.manager, count: Object.keys(deps.deps).length },
     eob,
     findings: findings.map((f) => ({

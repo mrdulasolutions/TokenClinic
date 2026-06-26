@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0
+
+### Added
+- **Multi-provider model calls.** A `Completer` abstraction with an **OpenRouter**
+  universal client — set `OPENROUTER_API_KEY` and `scan --apply` / `learn` can
+  route to any provider (OpenAI, Google, Anthropic, Llama, …) using the same ids
+  the pricing catalog uses. `ANTHROPIC_API_KEY` stays the direct path for
+  `claude-*`. Guards and docs updated to accept either key.
+- **Analyzer registry.** Triage is now a detect-gated registry; each analyzer
+  classifies its own findings. Adding a language is adding one entry (a `detect`
+  + a `run`) — the rest of the pipeline is language-agnostic. `scan` reports which
+  analyzers fired (footer and `--json`).
+
+### Changed
+- Classification moved out of a central `partition` step into the analyzers
+  themselves; `triage()` now returns fully-classified findings.
+
 ## 0.1.1
 
 - Fix the ast-grep native-binding loader to use the correct per-platform package

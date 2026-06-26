@@ -56,6 +56,7 @@ export function runAstGrep(root: string): Finding[] {
           line: m.line,
           col: m.col,
           fixability: "autofix", // a promoted rule is, by definition, a $0 on-device check
+          difficulty: "mechanical",
         });
       }
     }
