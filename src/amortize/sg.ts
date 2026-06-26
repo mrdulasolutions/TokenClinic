@@ -18,15 +18,33 @@ interface SgNode {
   text: () => string;
 }
 
+// Platform binding package names follow napi-rs conventions: linux carries a
+// libc suffix (-gnu/-musl), win32 carries -msvc, darwin is bare.
+function bindingCandidates(): string[] {
+  const { platform, arch } = process;
+  if (platform === "linux") return [`@ast-grep/napi-linux-${arch}-gnu`, `@ast-grep/napi-linux-${arch}-musl`];
+  if (platform === "win32") return [`@ast-grep/napi-win32-${arch}-msvc`];
+  return [`@ast-grep/napi-${platform}-${arch}`];
+}
+
 let cached: Napi | undefined;
 function napi(): Napi {
   if (cached) return cached;
   try {
     cached = require("@ast-grep/napi") as Napi;
+    return cached;
   } catch {
-    cached = require(`@ast-grep/napi-${process.platform}-${process.arch}`) as Napi;
+    /* fall through to platform packages */
   }
-  return cached;
+  for (const name of bindingCandidates()) {
+    try {
+      cached = require(name) as Napi;
+      return cached;
+    } catch {
+      /* try next candidate */
+    }
+  }
+  throw new Error("ast-grep native binding unavailable for this platform");
 }
 
 export interface SgMatch {
