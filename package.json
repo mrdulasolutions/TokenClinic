@@ -18,6 +18,7 @@
     "@anthropic-ai/sdk": "^0.106.0",
     "@ast-grep/napi": "^0.44.0",
     "@ast-grep/napi-darwin-arm64": "^0.44.0",
+    "@basisoasis/llm-intel": "^1.0.33",
     "typescript": "^5.6.0"
   },
   "devDependencies": {

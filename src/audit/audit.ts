@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { AuditResult, Bucket, CallRecord } from "../types";
-import { cost } from "../pricing/table";
+import { cost, isPriced } from "../pricing/table";
 import { classify } from "./classify";
 
 // Approach A — the retroactive audit. Ingest a JSONL of past LLM calls and print
@@ -39,8 +39,10 @@ export function audit(calls: CallRecord[]): AuditResult {
   let spend = 0;
   let projectedSpend = 0;
   let estimated = false;
+  let unpriced = 0;
 
   for (const call of calls) {
+    if (!isPriced(call.model)) unpriced++;
     const actual = cost(call.model, call.inputTokens, call.outputTokens);
     const { bucket, estimated: wasGuessed } = classify(call);
     estimated ||= wasGuessed;
@@ -62,6 +64,7 @@ export function audit(calls: CallRecord[]): AuditResult {
     projectedSpend,
     projectedSaved: spend - projectedSpend,
     estimated,
+    unpriced,
   };
 }
 

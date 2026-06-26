@@ -8,6 +8,8 @@ import { buildContext } from "./diagnose/context";
 import { DryRunFixer } from "./treat/fixer";
 import { AnthropicFixer } from "./treat/anthropic";
 import { runApplyLoop } from "./treat/apply";
+import { loadRouting, routedModels } from "./treat/route";
+import { loadPrices } from "./pricing/llmIntel";
 import { cluster } from "./amortize/cluster";
 import { synthesize } from "./amortize/synthesize";
 import { promote } from "./amortize/promote";
@@ -21,6 +23,8 @@ async function scan(target: string) {
   const root = resolve(target);
   const now = new Date().toISOString();
 
+  loadRouting(root);
+  const prices = await loadPrices(routedModels());
   const deps = detectDeps(root);
   const findings = partition(triage(root));
 
@@ -36,7 +40,7 @@ async function scan(target: string) {
 
   const where = relative(process.cwd(), root) || ".";
   console.log(`\n${c.bold("🩺 Token Clinic")} ${c.dim(`— ${where}`)}`);
-  console.log(c.dim(`   ${deps.manager} project · ${Object.keys(deps.deps).length} deps · ${findings.length} findings\n`));
+  console.log(c.dim(`   ${deps.manager} project · ${Object.keys(deps.deps).length} deps · ${findings.length} findings · prices: ${prices.source}\n`));
   for (const f of findings) printFinding(f);
   printEOB(eob);
   console.log(c.dim(`  health record → ${relative(process.cwd(), recordDir)}/\n`));
@@ -52,6 +56,8 @@ async function scanApply(target: string) {
 
   const root = resolve(target);
   const now = new Date().toISOString();
+  loadRouting(root);
+  await loadPrices(routedModels());
   const deps = detectDeps(root);
 
   const { before, fixed } = await runApplyLoop(root, new AnthropicFixer());
@@ -85,6 +91,7 @@ async function learn(target: string) {
   }
 
   const root = resolve(target);
+  loadRouting(root);
   const findings = partition(triage(root));
   const clusters = cluster(findings, CLUSTER_MIN);
 
@@ -145,13 +152,14 @@ function printEOB(eob: EOB) {
 const pct = (saved: number, base: number) => (base > 0 ? `${Math.round((saved / base) * 100)}%` : "0%");
 
 // ── audit (Approach A): retroactive audit over existing call logs ────────────
-function runAudit(logPath: string | undefined) {
+async function runAudit(logPath: string | undefined) {
   if (!logPath) {
     console.log("usage: tokenclinic audit <logs.jsonl>");
     process.exit(1);
   }
   const calls = parseLog(resolve(logPath));
-  reportAudit(relative(process.cwd(), resolve(logPath)), audit(calls));
+  const prices = await loadPrices(calls.map((c) => c.model)); // price against the log's own models
+  reportAudit(relative(process.cwd(), resolve(logPath)), audit(calls), prices.source);
 }
 
 const BUCKET_LABEL: Record<Bucket, (s: string) => string> = {
@@ -165,10 +173,13 @@ const BUCKET_NOTE: Record<Bucket, string> = {
   essential: "real reasoning → unchanged",
 };
 
-function reportAudit(source: string, a: AuditResult) {
+function reportAudit(source: string, a: AuditResult, priceSource: string) {
   console.log(`\n${c.bold("🩺 Token Clinic — retroactive audit")} ${c.dim(`· ${source}`)}`);
   const flag = a.estimated ? c.dim(" (estimated — some calls bucketed heuristically)") : "";
-  console.log(c.dim(`   ${a.calls} calls · ${usd(a.spend)} spent${flag}\n`));
+  console.log(c.dim(`   ${a.calls} calls · ${usd(a.spend)} spent · prices: ${priceSource}${flag}\n`));
+  if (a.unpriced > 0) {
+    console.log(c.yellow(`   ⚠ ${a.unpriced} call(s) had no known price — excluded from cost\n`));
+  }
 
   for (const bucket of ["eliminable", "routable", "essential"] as Bucket[]) {
     const b = a.byBucket[bucket];
@@ -196,7 +207,7 @@ const path = rest.find((a) => !a.startsWith("-"));
 if (cmd === "scan") {
   await (apply ? scanApply(path ?? ".") : scan(path ?? "."));
 } else if (cmd === "audit") {
-  runAudit(path);
+  await runAudit(path);
 } else if (cmd === "learn") {
   await learn(path ?? ".");
 } else {

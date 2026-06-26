@@ -71,6 +71,7 @@ export interface AuditResult {
   projectedSpend: number; // eliminable→$0, routable→re-priced to cheapest tier, essential→unchanged
   projectedSaved: number;
   estimated: boolean; // true if any call was bucketed heuristically (no category)
+  unpriced: number; // calls whose model had no known price (excluded from cost)
 }
 
 // --- Amortization (v2): synthesize a deterministic check from a recurring class ---

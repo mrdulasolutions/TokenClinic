@@ -42,15 +42,15 @@ Run before building anything live. Ingests a JSONL of past LLM calls and prints 
 
 ```
 🩺 Token Clinic — retroactive audit · fixtures/sample-logs.jsonl
-   12 calls · $0.59 spent (estimated — some calls bucketed heuristically)
+   12 calls · $0.20 spent · prices: snapshot (estimated — some calls bucketed heuristically)
 
-  ● eliminable   6 calls    $0.26  44% of spend · killed on-device → $0
-  ● routable     3 calls    $0.07  12% of spend · re-priced to cheapest tier
-  ● essential    3 calls    $0.26  44% of spend · real reasoning → unchanged
+  ● eliminable   6 calls    $0.09  42% of spend · killed on-device → $0
+  ● routable     3 calls    $0.05  24% of spend · re-priced to cheapest tier
+  ● essential    3 calls    $0.07  34% of spend · real reasoning → unchanged
 
-  eliminable-class fraction  44%  (clearly large — build it)
-  projected spend            $0.27 under the clinic loop
-  would have saved ~$0.31  (54% cheaper)
+  eliminable-class fraction  42%  (clearly large — build it)
+  projected spend            $0.08 under the clinic loop
+  would have saved ~$0.12  (59% cheaper)
 ```
 
 Log format is one JSON object per line: `{ "model", "inputTokens", "outputTokens", "task"?, "category"? }`. A `category` is authoritative; without one, the call is bucketed heuristically from `task` and the audit is flagged `estimated`.
@@ -90,8 +90,16 @@ Example output:
 
 **Still stubbed / placeholder:**
 - Token *estimates* in read-only `scan` use chars/4 (real exact counts only arrive on `--apply`).
-- Pricing — `src/pricing/table.ts` holds placeholder rates; it's the integration seam for [llm-intel](https://github.com/basisoasis/llm-intel).
 - Local autofix (the `[local]` lane) is still reported, not yet applied — that codemod path is v2.
+
+## Pricing & other providers
+
+Prices resolve through [llm-intel](https://github.com/basisoasis/llm-intel) (the OpenRouter catalog) at command start, with a committed **offline snapshot** fallback so read-only `scan` never *requires* network. The footer shows which source was used (`prices: llm-intel` / `prices: snapshot`). An unknown model prices as `?` and is surfaced — never a fabricated number.
+
+Because llm-intel is an OpenRouter catalog, **other providers come for free** on the cost side: anything keyed `openai/…`, `google/…`, etc. prices correctly. The split that makes this work:
+
+- **Pricing, audit, EOB, and routing are provider-agnostic.** Routing is declarative — drop a `.tokenclinic/routing.json` mapping difficulty classes to *any* model id (`{ "semantic": "openai/gpt-4o" }`) and pricing resolves it.
+- **Only the actual model call is provider-specific** — `--apply`/`learn` use the Anthropic SDK today; that single seam is what a future OpenRouter/LiteLLM client would swap, and nothing else changes.
 
 ## The Codebase Health Record
 
@@ -125,7 +133,7 @@ Only *eliminable* (bucket-1) findings amortize this way; *routable* (bucket-2) t
 ```
 src/
   types.ts            # Finding / EOB / CallRecord — the records every stage shares
-  pricing/table.ts    # model prices (llm-intel seam) + token estimate
+  pricing/            # llm-intel adapter + offline snapshot + id/unit normalize
   audit/              # Approach A: log ingest + bucket classifier + backwards EOB
   amortize/           # v2: cluster → synthesize → validate → promote (ast-grep rules)
   detect/deps.ts      # dependency profile
