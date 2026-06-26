@@ -3,23 +3,63 @@
   "version": "0.1.0",
   "description": "Pre-flight gate for coding agents: cheap local analysis first, route only the irreducible to the right-priced model, print the bill.",
   "type": "module",
+  "license": "MIT",
+  "author": "mrdulasolutions <matt@mrdula.solutions>",
+  "homepage": "https://github.com/mrdulasolutions/TokenClinic#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mrdulasolutions/TokenClinic.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mrdulasolutions/TokenClinic/issues"
+  },
+  "keywords": [
+    "llm",
+    "tokens",
+    "cost",
+    "pricing",
+    "claude",
+    "anthropic",
+    "openrouter",
+    "ast-grep",
+    "code-review",
+    "static-analysis",
+    "cli",
+    "pre-flight",
+    "claude-code",
+    "agent"
+  ],
   "bin": {
     "tokenclinic": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "skill",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
   },
   "scripts": {
     "scan": "bun run src/cli.ts scan",
     "audit": "bun run src/cli.ts audit",
+    "learn": "bun run src/cli.ts learn",
     "demo": "bun run src/cli.ts scan fixtures/sample-repo",
     "demo:audit": "bun run src/cli.ts audit fixtures/sample-logs.jsonl",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run typecheck && bun test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
     "@ast-grep/napi": "^0.44.0",
-    "@ast-grep/napi-darwin-arm64": "^0.44.0",
     "@basisoasis/llm-intel": "^1.0.33",
     "typescript": "^5.6.0"
+  },
+  "optionalDependencies": {
+    "@ast-grep/napi-darwin-arm64": "^0.44.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"

@@ -13,13 +13,27 @@ A pre-flight gate for coding agents. It runs cheap, deterministic analysis **on-
 | **Treat** | Route each escalated fix by difficulty: mechanical → Haiku, semantic → Sonnet, architectural → Opus. Apply, then re-run the source check — a fix isn't done until it verifies. |
 | **Bill (EOB)** | Cost per fix + savings vs. the naive "dump the file at a top model" baseline. The screenshot-able receipt. |
 
-## Two commands, two moves
+## Install
+
+Runs on [Bun](https://bun.sh).
+
+```bash
+# global CLI
+bun add -g tokenclinic        # or, from a clone: bun link
+tokenclinic scan ./my-project
+
+# or run from a clone without installing
+bun install
+bun run src/cli.ts scan ./my-project
+```
+
+`scan` (incl. `--json`), `audit`, and `learn`'s clustering are free and offline-capable. `scan --apply` and `learn`'s synthesis call a model and need `ANTHROPIC_API_KEY`.
+
+## The commands
 
 Token Clinic ships the strategically-correct **first move** (the retroactive audit) and the **recurring product** (the live scan):
 
 ```bash
-bun install
-
 # Approach A — measure the thesis from logs you already have ($0 risk, no code read)
 bun run demo:audit                                  # audits fixtures/sample-logs.jsonl
 bun run src/cli.ts audit /path/to/your-llm-calls.jsonl
