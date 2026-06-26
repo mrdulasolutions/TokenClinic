@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+- Fix the ast-grep native-binding loader to use the correct per-platform package
+  names (Linux `…-gnu`/`…-musl`, Windows `…-msvc`), so installs and CI work off
+  macOS. Degrades gracefully (no ast-grep findings) if the binding is absent.
+- CI: GitHub Actions runs typecheck + tests on push/PR (test timeout raised to
+  30s for the tsc-spawning apply-loop tests).
+
 ## 0.1.0
 
 First release. The full clinic loop — triage → diagnose → treat → bill — plus the
