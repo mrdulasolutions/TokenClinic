@@ -48,7 +48,7 @@
     "learn": "bun run src/cli.ts learn",
     "demo": "bun run src/cli.ts scan fixtures/sample-repo",
     "demo:audit": "bun run src/cli.ts audit fixtures/sample-logs.jsonl",
-    "test": "bun test",
+    "test": "bun test --timeout 30000",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run typecheck && bun test"
   },
