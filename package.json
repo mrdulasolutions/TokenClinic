@@ -50,7 +50,7 @@
     "demo:audit": "bun run src/cli.ts audit fixtures/sample-logs.jsonl",
     "test": "bun test --timeout 30000",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run typecheck && bun test"
+    "prepublishOnly": "bun run typecheck && bun run test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
